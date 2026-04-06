@@ -7,7 +7,7 @@ from src.agent.agent import ReActAgent
 
 def main():
     
-    llm = OpenAIProvider(model_name="gpt-4o", api_key='')
+    llm = OpenAIProvider(base_url="https://models.inference.ai.azure.com/",model_name="gpt-4o-mini")
 
     # Cấu hình danh sách Tools cho Agent
 
@@ -65,3 +65,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    #dfdff

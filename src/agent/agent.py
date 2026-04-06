@@ -28,8 +28,6 @@ class ReActAgent:
         2. NEVER guess or hallucinate the result of an Action. 
         3. NEVER write the 'Observation' yourself. The system will provide it to you.
         4. Each step should only contain ONE Thought and ONE Action.
-        5. NẾU người dùng hỏi chung chung về lãi suất các ngân hàng mà không nhắc đến tên ngân hàng cụ thể, BẮT BUỘC dùng Action với tham số bank_name="all". 
-        6. NẾU người dùng không chỉ định loại lãi suất, BẮT BUỘC dùng type_rate="all" thay vì hỏi lại.
 
         Use the following format strictly:
         Question: the input question you must answer
@@ -40,13 +38,16 @@ class ReActAgent:
         """
 
     def run(self, user_input: str) -> str:
+        """
+        Implement the ReAct loop logic.
+        1. Generate Thought + Action.
+        2. Parse Action and execute Tool.
+        3. Append Observation to prompt and repeat until Final Answer.
+        """
         logger.log_event("AGENT_START", {"input": user_input, "model": self.llm.model_name})
         
-        # Lưu vào history (như đã sửa ở bước trước)
-        self.history.append(f"User: {user_input}")
-        history_str = "\n".join(self.history[-6:])
-        current_prompt = f"Chat History:\n{history_str}\n\nQuestion: {user_input}\n"
-        
+        # Khởi tạo ngữ cảnh (context) ban đầu với câu hỏi của người dùng
+        current_prompt = f"Question: {user_input}\n"
         steps = 0
         
         # 1. KHỞI TẠO BIẾN THEO DÕI METRICS
@@ -57,59 +58,44 @@ class ReActAgent:
         while steps < self.max_steps:
             print(f"--- Bước {steps + 1} ---")
             
-            # Gọi LLM
+            # 1. Gọi LLM sinh ra suy luận (Thought) và Hành động (Action)
             response_dict = self.llm.generate(current_prompt, system_prompt=self.get_system_prompt())
             result = response_dict["content"]
-            
-            # 2. CỘNG DỒN METRICS TỪNG BƯỚC
-            total_prompt_tokens += response_dict.get("prompt_tokens", 0)
-            total_completion_tokens += response_dict.get("completion_tokens", 0)
-            total_latency += response_dict.get("latency_sec", 0.0)
-            
             print(f"LLM Output:\n{result}\n")
+            
+            # Cập nhật kết quả LLM vào lịch sử (như một trí nhớ)
             current_prompt += f"{result}\n"
             
+            # 2. Kiểm tra xem LLM đã ra được câu trả lời cuối cùng chưa?
+            # Dùng regex để tìm chuỗi bắt đầu bằng "Final Answer:"
             final_answer_match = re.search(r'Final Answer:(.*)', result, re.IGNORECASE | re.DOTALL)
             if final_answer_match:
                 final_answer = final_answer_match.group(1).strip()
-                
-                # 3. GHI LOG KẾT QUẢ TỔNG HỢP (AGENT_END)
-                logger.log_event("AGENT_END", {
-                    "steps": steps + 1, 
-                    "status": "success",
-                    "prompt_tokens": total_prompt_tokens,
-                    "completion_tokens": total_completion_tokens,
-                    "total_tokens": total_prompt_tokens + total_completion_tokens,
-                    "latency_sec": round(total_latency, 3) # Làm tròn 3 chữ số thập phân
-                })
-                
-                self.history.append(f"Assistant: {final_answer}")
+                logger.log_event("AGENT_END", {"steps": steps + 1, "status": "success"})
                 return final_answer
             
-            # (Phần xử lý Action_match và Observation giữ nguyên)
+            # 3. Nếu chưa có Final Answer, kiểm tra xem LLM có gọi Tool (Action) không?
+            # Pattern: Action: ten_tool(tham_so)
             action_match = re.search(r'Action:\s*([a-zA-Z0-9_]+)\((.*?)\)', result, re.IGNORECASE)
+            
             if action_match:
                 tool_name = action_match.group(1).strip()
                 args_str = action_match.group(2).strip()
+                
+                # Gọi hàm thực thi Tool
                 observation = self._execute_tool(tool_name, args_str)
+                print(f"Observation: {observation}\n")
+                
+                # Gắn kết quả (Observation) vào lịch sử để LLM đọc ở vòng lặp tiếp theo
                 current_prompt += f"Observation: {observation}\n"
             else:
+                # Nếu LLM nói linh tinh, không có Action cũng không có Final Answer
                 current_prompt += "Observation: Lỗi format. Hãy đưa ra 'Action:' hoặc 'Final Answer:'.\n"
             
             steps += 1
             
-        # Ghi log nếu vượt quá số bước
-        logger.log_event("AGENT_END", {
-            "steps": steps, 
-            "status": "max_steps_reached",
-            "prompt_tokens": total_prompt_tokens,
-            "completion_tokens": total_completion_tokens,
-            "total_tokens": total_prompt_tokens + total_completion_tokens,
-            "latency_sec": round(total_latency, 3)
-        })
-        fail_msg = "Xin lỗi, tôi đã suy nghĩ quá lâu (vượt giới hạn số bước) mà chưa tìm ra câu trả lời."
-        self.history.append(f"Assistant: {fail_msg}")
-        return fail_msg
+        logger.log_event("AGENT_END", {"steps": steps, "status": "max_steps_reached"})
+        return "Xin lỗi, tôi đã suy nghĩ quá lâu (vượt giới hạn số bước) mà chưa tìm ra câu trả lời."
 
     def _execute_tool(self, tool_name: str, args_str: str) -> str:
         """
