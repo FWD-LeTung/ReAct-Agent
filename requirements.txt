@@ -11,3 +11,4 @@ playwright
 lxml
 html5lib
 playwright
+tavily
