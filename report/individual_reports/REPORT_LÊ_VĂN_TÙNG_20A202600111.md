@@ -59,9 +59,7 @@ Các request gửi đi thiếu thông tin cần thiết (User-Agent, cookies) ho
 - **Solution**:  
 Sử dụng trình duyệt giả lập (Playwright) để mô phỏng hành vi người dùng thật:
 
-```python
-browser = p.chromium.launch(headless=True)
-page = browser.new_page(user_agent="Mozilla/5.0...")
+
 ## III. Personal Insights: Chatbot vs ReAct (10 Points)
 
 ### 1. Reasoning
