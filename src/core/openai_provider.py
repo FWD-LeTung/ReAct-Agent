@@ -8,37 +8,31 @@ class OpenAIProvider(LLMProvider):
         super().__init__(model_name, api_key)
         self.client = OpenAI(api_key=self.api_key, base_url=base_url)
 
-    def generate(self, prompt: str, system_prompt: Optional[str] = None) -> Dict[str, Any]:
-        start_time = time.time()
+    def generate(self, prompt: str, system_prompt: str = "") -> dict:
+        start_time = time.time() # Bắt đầu bấm giờ
         
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-
         response = self.client.chat.completions.create(
             model=self.model_name,
-            messages=messages,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3
         )
-
-        end_time = time.time()
-        latency_ms = int((end_time - start_time) * 1000)
-
-        # Extraction from OpenAI response
-        content = response.choices[0].message.content
-        usage = {
-            "prompt_tokens": response.usage.prompt_tokens,
-            "completion_tokens": response.usage.completion_tokens,
-            "total_tokens": response.usage.total_tokens
-        }
-
+        
+        latency = time.time() - start_time # Tính độ trễ
+        
+        # Lấy thông tin token từ response
+        usage = response.usage
+        
         return {
-            "content": content,
-            "usage": usage,
-            "latency_ms": latency_ms,
-            "provider": "openai"
+            "content": response.choices[0].message.content,
+            "prompt_tokens": usage.prompt_tokens,
+            "completion_tokens": usage.completion_tokens,
+            "total_tokens": usage.total_tokens,
+            "latency_sec": latency
         }
-
+    
     def stream(self, prompt: str, system_prompt: Optional[str] = None) -> Generator[str, None, None]:
         messages = []
         if system_prompt:

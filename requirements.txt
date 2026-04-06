@@ -5,3 +5,9 @@ pydantic>=2.0.0
 requests>=2.31.0
 pytest>=7.4.0
 llama-cpp-python>=0.2.0
+polars
+pandas
+playwright
+lxml
+html5lib
+playwright

@@ -49,6 +49,11 @@ class ReActAgent:
         # Khởi tạo ngữ cảnh (context) ban đầu với câu hỏi của người dùng
         current_prompt = f"Question: {user_input}\n"
         steps = 0
+        
+        # 1. KHỞI TẠO BIẾN THEO DÕI METRICS
+        total_prompt_tokens = 0
+        total_completion_tokens = 0
+        total_latency = 0.0
 
         while steps < self.max_steps:
             print(f"--- Bước {steps + 1} ---")
