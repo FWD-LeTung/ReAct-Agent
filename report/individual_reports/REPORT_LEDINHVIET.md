@@ -1,4 +1,17 @@
-import os
+# Individual Report: Lab 3 - Chatbot vs ReAct Agent
+
+- **Student Name**: [Lê Đình Việt]
+- **Student ID**: [2A202600469]
+- **Date**: [06/04/2026]
+
+---
+
+## I. Technical Contribution (15 Points)
+
+*Describe your specific contribution to the codebase (e.g., implemented a specific tool, fixed the parser, etc.).*
+
+- **Modules Implementated**: [e.g., `src/chatbot/chatbot.py`]
+- **Code Highlights**: [import os
 import sys
 import time
 from collections import deque
@@ -24,7 +37,7 @@ class SimpleChatbot:
     Maintains conversation history (last 10 messages).
     """
 
-    def __init__(self, api_key: Optional[str] = None, model_name: str = "gpt-4o-mini"):
+    def __init__(self, api_key: Optional[str] = None, model_name: str = "gpt-4o"):
         if api_key is None:
             api_key = os.getenv("OPENAI_API_KEY")
             if not api_key:
@@ -157,4 +170,161 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main()]
+- **Documentation**: [Nhiệm vụ của tôi trong nhóm là xây dựng một chatbot đơn giản có khả năng trả lời về thông tin lãi suất và cách tính tiền lãi cho khách hàng. Khi trả lời những câu hỏi của người dùng, tôi tổng hợp lại lỗi sai và cách cải thiện chatbot bằng ReAct Agent cho mọi người làm Giai đoạn 3]
+
+---
+
+## II. Debugging Case Study (10 Points)
+
+### Problem Description
+Một failure phức tạp xảy ra khi Agent:
+
+- Tool chính `fetch_interest_rates` bị lỗi (Playwright chưa cài browser)
+- Agent fallback sang `tavily_search`
+- Nhưng kết quả search **không ổn định / không chính xác**
+- Agent tiếp tục reasoning nhiều bước → tăng latency, token cost
+- Cuối cùng trả lời **dựa trên dữ liệu không đáng tin (hallucination risk)**
+
+Đây là case **multi-step failure chain**:
+Tool 1 fail → Tool 2 noisy → reasoning lệch → output sai tiềm ẩn
+
+
+---
+
+### Log Source
+Trích từ log: :contentReference[oaicite:0]{index=0}
+
+**Step 1 – Tool chính fail:**
+Action: fetch_interest_rates(...)
+Observation: BrowserType.launch error (Playwright missing)
+
+
+**Step 2 – Fallback sang search:**
+
+Action: tavily_search(...)
+Observation: Không tìm thấy thông tin phù hợp
+
+
+**Step 3 – Retry search với query khác:**
+
+Action: tavily_search(...)
+Observation: trả về dữ liệu cũ (10/2023, 5.5%)
+
+
+**Step 4 – Agent vẫn kết luận:**
+
+Final Answer: Lãi suất cao nhất là 5.5%
+
+
+---
+
+### Diagnosis
+
+**1. Failure cascade (chuỗi lỗi liên tiếp)**
+
+- Tool chính fail → mất nguồn dữ liệu chuẩn
+- Tool phụ (search) trả dữ liệu:
+  - outdated
+  - không kiểm chứng
+- Agent không phân biệt được độ tin cậy
+
+---
+
+**2. LLM reasoning limitation**
+
+- LLM vẫn tin rằng:
+``` id="n3x8yz"
+search result = ground truth
+Không có cơ chế:
+kiểm tra freshness (2023 vs hiện tại)
+cross-check nhiều nguồn
+
+**3. Prompt chưa kiểm soát chất lượng dữ liệu**
+
+Thiếu rule:
+
+- If data is outdated → warn user
+- If confidence low → do not finalize immediately
+
+**4. Cost & latency issue**
+
+Log cho thấy:
+
+Step tăng từ 2 → 3
+Token tăng mạnh:
+total_tokens: 955
+latency: 8396ms
+
+Agent trở nên expensive nhưng không chính xác hơn
+
+Solution
+1. Fix tool (root)
+playwright install
+2. Add reliability layer (rất quan trọng)
+
+Trong system prompt:
+
+- If tool output is outdated → mention uncertainty
+- Prefer multiple sources before final answer
+- If confidence is low → ask user instead of guessing
+---
+
+## III. Personal Insights: Chatbot vs ReAct (10 Points)
+
+1. Reasoning
+
+ReAct cho phép multi-step reasoning:
+
+Tool fail → switch tool → retry → finalize
+
+Chatbot không làm được chain này
+
+2. Reliability
+
+Case này cho thấy:
+
+ReAct có thể tệ hơn chatbot khi:
+
+Tool unreliable
+Data noisy
+Không có validation layer
+
+Chatbot:
+
+Trả lời general nhưng ổn định
+
+Agent:
+
+Trả lời “có vẻ đúng” nhưng thực ra sai (dangerous)
+
+3. Observation
+
+Observation ảnh hưởng mạnh:
+
+Error → đổi tool
+No data → retry
+Weak data → vẫn finalize
+
+Vấn đề:
+Agent không hiểu chất lượng observation
+
+
+---
+
+## IV. Future Improvements (5 Points)
+
+Scalability
+Multi-tool orchestration (planner + executor)
+Async execution cho search + scraping
+Safety
+Add "Critic Agent":
+check:
+- data freshness
+- source reliability
+- contradiction
+Performance
+Cache interest rates (daily update)
+Vector DB để tránh search lại
+
+---
